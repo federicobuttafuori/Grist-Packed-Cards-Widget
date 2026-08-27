@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grist Board Widget</title>
+  <title>Grist Packed Cards Widget</title>
   <style>
     :root {
       --bg: rgb(255, 255, 255);
@@ -363,7 +363,7 @@
     <aside class="panel">
       <div class="panel-resizer" id="panelResizer" role="separator" aria-orientation="vertical" tabindex="-1"></div>
       <div class="panel-body">
-        <h1>Board cards</h1>
+        <h1>Packed cards</h1>
         <div class="field">
           <label for="titleColumn">Title column</label>
           <select id="titleColumn"></select>
@@ -415,7 +415,7 @@
         </div>
       </div>
       <footer class="panel-version" aria-label="Widget version">
-        <span>Board</span> <span id="widgetVersion">—</span>
+        <span>Packed cards</span> <span id="widgetVersion">—</span>
       </footer>
     </aside>
     <main class="main">
@@ -442,8 +442,8 @@
   <script>
     (function () {
       const WIDGET_VERSION = "2026.08.27";
-      const LOCAL_OPTIONS_KEY = "grist-board-widget:options:v1";
-      const PANEL_WIDTH_STORAGE_KEY = "grist-board-widget:panelWidthPx:v1";
+      const LOCAL_OPTIONS_KEY = "grist-packed-cards-widget:options:v1";
+      const PANEL_WIDTH_STORAGE_KEY = "grist-packed-cards-widget:panelWidthPx:v1";
       const DEFAULT_COLORS = [
         "#28a745", "#e41f5a", "#CC9900", "#fd7e14", "#9D3182",
         "#6c757d", "#00a2ff", "#2563eb", "#7c3aed", "#0f766e"
