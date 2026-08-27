@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grist Board Widget</title>
+  <style>
+    :root {
+      --bg: rgb(64, 75, 87);
+      --fg: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --panel: #f9fafb;
+      --card-w: 120px;
+      --status-color: #495057;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      color: var(--fg);
+      background: var(--bg);
+    }
+    .app {
+      --panel-w: 320px;
+      --panel-min: 240px;
+      display: grid;
+      grid-template-columns: minmax(var(--panel-min), min(var(--panel-w), min(90vw, calc(100vw - 48px)))) 1fr;
+      min-height: 100vh;
+    }
+    .app.settings-hidden { grid-template-columns: 1fr; }
+    .panel {
+      position: relative;
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      color: #111827;
+    }
+    .app.settings-hidden .panel,
+    .app.settings-hidden .panel-resizer { display: none; }
+    .panel-resizer {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 10px;
+      margin-right: -5px;
+      z-index: 6;
+      cursor: ew-resize;
+      touch-action: none;
+    }
+    .panel-resizer:hover { background: rgba(59, 130, 246, 0.12); }
+    .panel-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+    .panel-version {
+      flex-shrink: 0;
+      padding: 8px 12px 10px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .main {
+      padding: 8px;
+      overflow: auto;
+      min-width: 0;
+      background: var(--bg);
+    }
+    h1 { font-size: 16px; margin: 0 0 10px; }
+    h2 { font-size: 13px; margin: 14px 0 8px; color: #111827; }
+    .field { margin-bottom: 8px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    select, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+    .hint { font-size: 11px; color: var(--muted); }
+    .empty {
+      color: #ecf0f1;
+      font-size: 13px;
+      padding: 24px 8px;
+      text-align: center;
+    }
+    .columns-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      max-height: 220px;
+      overflow: auto;
+      padding: 4px;
+    }
+    .col-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .col-item:hover { background: #f3f4f6; }
+    .col-item label { margin: 0; cursor: pointer; color: #111827; }
+    .color-list {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .color-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 36px;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .color-row input[type="color"] {
+      width: 32px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .settings-toggle, .debug-toggle {
+      position: fixed;
+      bottom: 12px;
+      z-index: 1100;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.35);
+      color: #111827;
+      font-size: 18px;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+    .settings-toggle { left: 12px; }
+    .debug-toggle { left: 54px; font-size: 16px; }
+    .app.settings-hidden ~ .debug-toggle { display: none; }
+    .debug-window {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      width: min(720px, calc(100vw - 24px));
+      max-height: 38vh;
+      z-index: 1200;
+      display: none;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #0b1220;
+      color: #e2e8f0;
+      overflow: hidden;
+    }
+    .debug-window.visible { display: block; }
+    .debug-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #334155;
+      font-size: 12px;
+      cursor: move;
+      user-select: none;
+    }
+    .debug-actions button {
+      border: 1px solid #475569;
+      border-radius: 6px;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 11px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    .debug-summary, .debug-body {
+      margin: 0;
+      padding: 8px 10px;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: min(160px, 22vh);
+      overflow: auto;
+    }
+    .debug-body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border-top: 1px solid #334155;
+    }
+
+    .board-grid {
+      position: relative;
+      width: 100%;
+      min-height: 40px;
+    }
+    .board-grid.is-grouped {
+      position: static;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      height: auto !important;
+    }
+    .board-group + .board-group {
+      border-top: 1px solid rgba(236, 240, 241, 0.28);
+      padding-top: 4px;
+    }
+    .board-group-title {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+      margin: 0;
+      padding: 4px 2px 6px;
+      border: none;
+      background: transparent;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ecf0f1;
+      text-align: left;
+      cursor: pointer;
+    }
+    .board-group.is-collapsed .board-group-chevron { transform: rotate(-90deg); }
+    .board-group.is-collapsed .board-group-items { display: none !important; }
+    .board-group-chevron {
+      font-size: 10px;
+      color: #95a5a6;
+      transition: transform 0.15s ease;
+    }
+    .board-group-count { font-size: 11px; font-weight: 500; color: #bdc3c7; }
+    .board-group-items { position: relative; width: 100%; display: block; }
+
+    .board-card-wrapper {
+      --board-zoom: 1;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .record-card {
+      width: var(--card-w);
+      box-sizing: border-box;
+      zoom: var(--board-zoom);
+      background: #ffffff;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 6px;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 10px;
+      overflow: hidden;
+    }
+    .record-card:hover {
+      border-color: #5dade2;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .record-card.is-selected {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
+    }
+    .record-card.has-color {
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), inset 0 0 12px color-mix(in srgb, var(--status-color) 60%, transparent);
+      border-color: color-mix(in srgb, var(--status-color) 30%, transparent);
+    }
+    .record-card.has-color .card-title,
+    .record-card.has-color .card-subtitle,
+    .record-card.has-color .card-field-value {
+      color: var(--status-color);
+    }
+    .card-title-block {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      width: 100%;
+      margin-bottom: 4px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 11px;
+      color: #495057;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-subtitle {
+      font-size: 9px;
+      color: #666666;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-body-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+    .card-image {
+      width: 50px;
+      height: 50px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: #f3f4f6;
+    }
+    .card-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+    .card-field-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #495057;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-field-value.secondary {
+      font-size: 11px;
+      font-weight: 400;
+      color: #666666;
+    }
+    @media (max-width: 920px) {
+      .app { grid-template-columns: 1fr; }
+      .panel-resizer { display: none; }
+      .panel { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app settings-hidden">
+    <aside class="panel">
+      <div class="panel-resizer" id="panelResizer" role="separator" aria-orientation="vertical" tabindex="-1"></div>
+      <div class="panel-body">
+        <h1>Board cards</h1>
+        <div class="field">
+          <label for="titleColumn">Title column</label>
+          <select id="titleColumn"></select>
+        </div>
+        <div class="field">
+          <label for="subtitleColumn">Subtitle column</label>
+          <select id="subtitleColumn"></select>
+        </div>
+        <div class="field">
+          <label for="imageColumn">Image column</label>
+          <select id="imageColumn"></select>
+          <div class="hint">URL or Attachment.</div>
+        </div>
+        <div class="field">
+          <label for="sizeColumn">Size column</label>
+          <select id="sizeColumn"></select>
+          <div class="hint">Numeric. Shown with g. Larger values make bigger cards.</div>
+        </div>
+        <div class="field">
+          <label for="priceColumn">Price column</label>
+          <select id="priceColumn"></select>
+          <div class="hint">Numeric. Shown as € with 2 decimals.</div>
+        </div>
+        <div class="field">
+          <label for="colorColumn">Color column</label>
+          <select id="colorColumn"></select>
+        </div>
+        <div class="field">
+          <label for="groupColumn">Group by</label>
+          <select id="groupColumn"></select>
+        </div>
+        <h2>Extra fields on card</h2>
+        <input id="fieldSearch" type="text" placeholder="Search columns..." />
+        <div id="extraFields" class="columns-box"></div>
+        <h2>Colors by value</h2>
+        <div id="valueColors" class="color-list"></div>
+        <h2>Card size</h2>
+        <div class="field">
+          <label for="cardWidth">Base width (px)</label>
+          <input id="cardWidth" type="number" min="72" max="280" step="4" />
+        </div>
+        <div class="field">
+          <label for="minZoom">Min zoom</label>
+          <input id="minZoom" type="number" min="0.3" max="1" step="0.05" />
+        </div>
+        <div class="field">
+          <label for="maxZoom">Max zoom</label>
+          <input id="maxZoom" type="number" min="0.8" max="2" step="0.05" />
+        </div>
+      </div>
+      <footer class="panel-version" aria-label="Widget version">
+        <span>Board</span> <span id="widgetVersion">—</span>
+      </footer>
+    </aside>
+    <main class="main">
+      <div id="boardRoot" class="board-grid"></div>
+      <div id="emptyState" class="empty" hidden>Nessun record da mostrare.</div>
+    </main>
+  </div>
+  <button id="settingsToggle" class="settings-toggle" type="button" title="Show settings" aria-label="Show settings">⚙</button>
+  <button id="debugToggle" class="debug-toggle" type="button" title="Show debug logs" aria-label="Show debug logs">🐞</button>
+  <section id="debugWindow" class="debug-window">
+    <div class="debug-header">
+      <strong>Debug Logs</strong>
+      <div class="debug-actions">
+        <button id="copyDebugLog" type="button">Copy log</button>
+        <button id="clearDebugLog" type="button">Clear</button>
+        <button id="closeDebugLog" type="button">X</button>
+      </div>
+    </div>
+    <div id="debugSummary" class="debug-summary"></div>
+    <pre id="debugOutput" class="debug-body"></pre>
+  </section>
+
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script>
+    (function () {
+      const WIDGET_VERSION = "2026.08.27";
+      const LOCAL_OPTIONS_KEY = "grist-board-widget:options:v1";
+      const PANEL_WIDTH_STORAGE_KEY = "grist-board-widget:panelWidthPx:v1";
+      const DEFAULT_COLORS = [
+        "#28a745", "#e41f5a", "#CC9900", "#fd7e14", "#9D3182",
+        "#6c757d", "#00a2ff", "#2563eb", "#7c3aed", "#0f766e"
+      ];
+      const DEMO_RECORDS = [
+        { id: 1, Gusto: "Pepe nero", Ricetta: "R-12", Peso: 80, Prezzo: 6.5, Stato: "Disponibile" },
+        { id: 2, Gusto: "Pepe nero", Ricetta: "R-12", Peso: 160, Prezzo: 11.9, Stato: "Disponibile" },
+        { id: 3, Gusto: "Chili", Ricetta: "R-08", Peso: 50, Prezzo: 4.2, Stato: "Prenotato" },
+        { id: 4, Gusto: "Chili", Ricetta: "R-08", Peso: 220, Prezzo: 15.4, Stato: "Venduto" },
+        { id: 5, Gusto: "Origano", Ricetta: "R-03", Peso: 100, Prezzo: 7.1, Stato: "Disponibile" },
+        { id: 6, Gusto: "Origano", Ricetta: "R-03", Peso: 40, Prezzo: 3.8, Stato: "Difettoso" },
+        { id: 7, Gusto: "Fumo", Ricetta: "R-21", Peso: 180, Prezzo: 13.2, Stato: "Venduto" },
+        { id: 8, Gusto: "Fumo", Ricetta: "R-21", Peso: 90, Prezzo: 6.9, Stato: "Disponibile" }
+      ];
+
+      const state = {
+        records: [],
+        selectedRowId: null,
+        columnsMeta: [],
+        config: {
+          titleColumn: "",
+          subtitleColumn: "",
+          imageColumn: "",
+          sizeColumn: "",
+          priceColumn: "",
+          colorColumn: "",
+          groupColumn: "",
+          extraFields: [],
+          valueColors: {},
+          cardWidth: 120,
+          minZoom: 0.5,
+          maxZoom: 1.2
+        },
+        settingsVisible: false,
+        fieldSearch: "",
+        hasGrist: typeof window.grist !== "undefined",
+        isSavingOptions: false,
+        isApplyingRemoteOptions: false,
+        lastSavedOptionsJson: "",
+        lastAppliedOptionsJson: "",
+        optionsApiAvailable: true,
+        uiShellWired: false,
+        gristWireDone: false,
+        panelResizeWired: false,
+        _panelResizeActive: false,
+        collapsedGroups: {},
+        lastColorValuesSig: ""
+      };
+      state.isBuilderHost = window.location.pathname.includes("/grist-widget/custom-widget-builder/");
+
+      const els = {
+        app: document.querySelector(".app"),
+        boardRoot: document.getElementById("boardRoot"),
+        emptyState: document.getElementById("emptyState"),
+        titleColumn: document.getElementById("titleColumn"),
+        subtitleColumn: document.getElementById("subtitleColumn"),
+        imageColumn: document.getElementById("imageColumn"),
+        sizeColumn: document.getElementById("sizeColumn"),
+        priceColumn: document.getElementById("priceColumn"),
+        colorColumn: document.getElementById("colorColumn"),
+        groupColumn: document.getElementById("groupColumn"),
+        extraFields: document.getElementById("extraFields"),
+        fieldSearch: document.getElementById("fieldSearch"),
+        valueColors: document.getElementById("valueColors"),
+        cardWidth: document.getElementById("cardWidth"),
+        minZoom: document.getElementById("minZoom"),
+        maxZoom: document.getElementById("maxZoom"),
+        settingsToggle: document.getElementById("settingsToggle"),
+        debugToggle: document.getElementById("debugToggle"),
+        debugWindow: document.getElementById("debugWindow"),
+        debugHeader: document.querySelector(".debug-header"),
+        debugSummary: document.getElementById("debugSummary"),
+        debugOutput: document.getElementById("debugOutput"),
+        copyDebugLog: document.getElementById("copyDebugLog"),
+        clearDebugLog: document.getElementById("clearDebugLog"),
+        closeDebugLog: document.getElementById("closeDebugLog"),
+        panelResizer: document.getElementById("panelResizer")
+      };
+
+      const debugLines = [];
+      const MAX_DEBUG_LINES = 120;
+      function debugLog(message, data) {
+        const ts = new Date().toISOString().split("T")[1].replace("Z", "");
+        let line = "[" + ts + "] " + message;
+        if (data !== undefined) {
+          try {
+            line += " | " + (typeof data === "string" ? data : JSON.stringify(data));
+          } catch (err) {
+            line += " | [unserializable]";
+          }
+        }
+        debugLines.push(line);
+        if (debugLines.length > MAX_DEBUG_LINES) debugLines.shift();
+        if (els.debugOutput) {
+          els.debugOutput.textContent = debugLines.join("\n");
+          els.debugOutput.scrollTop = els.debugOutput.scrollHeight;
+        }
+      }
+
+      document.getElementById("widgetVersion").textContent = "v" + WIDGET_VERSION;
+
+      function isPlainObject(value) {
+        return !!value && typeof value === "object" && !Array.isArray(value);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function getRecordRowId(record) {
+        if (!record || typeof record !== "object") return null;
+        if (record.id !== undefined && record.id !== null) return record.id;
+        if (record.fields && record.fields.id != null) return record.fields.id;
+        return null;
+      }
+
+      function getRecordFieldObject(record) {
+        if (!record || typeof record !== "object") return {};
+        if (record.fields && typeof record.fields === "object" && !Array.isArray(record.fields)) {
+          return record.fields;
+        }
+        return record;
+      }
+
+      function getRecordValue(record, colId) {
+        if (!record || !colId) return undefined;
+        const fields = getRecordFieldObject(record);
+        if (Object.prototype.hasOwnProperty.call(fields, colId)) return fields[colId];
+        if (Object.prototype.hasOwnProperty.call(record, colId)) return record[colId];
+        return undefined;
+      }
+
+      function cellLabels(raw) {
+        if (raw === null || raw === undefined || raw === "") return [];
+        if (typeof raw === "string") {
+          const s = raw.trim();
+          return s ? [s] : [];
+        }
+        if (typeof raw === "number" && Number.isFinite(raw)) return [String(raw)];
+        if (typeof raw === "boolean") return [raw ? "true" : "false"];
+        if (Array.isArray(raw)) {
+          if (raw[0] === "L") return raw.slice(1).flatMap(cellLabels);
+          if (raw.length >= 2 && typeof raw[0] === "number" && (typeof raw[1] === "string" || typeof raw[1] === "number")) {
+            const label = String(raw[1]).trim();
+            return label ? [label] : [];
+          }
+          return raw.flatMap(cellLabels);
+        }
+        if (typeof raw === "object") {
+          if (typeof raw.label === "string" && raw.label.trim()) return [raw.label.trim()];
+          if (typeof raw.name === "string" && raw.name.trim()) return [raw.name.trim()];
+        }
+        const fallback = String(raw).trim();
+        return fallback ? [fallback] : [];
+      }
+
+      function formatCell(raw) {
+        return cellLabels(raw).join(", ");
+      }
+
+      function normalizeNumber(value) {
+        if (value === null || value === undefined || value === "") return null;
+        if (typeof value === "number") return Number.isFinite(value) ? value : null;
+        if (typeof value === "string") {
+          const n = Number(value.replace(",", "."));
+          return Number.isFinite(n) ? n : null;
+        }
+        return null;
+      }
+
+      function formatSizeGrams(n) {
+        if (!Number.isFinite(n)) return "";
+        const text = Number.isInteger(n) ? String(n) : String(n);
+        return text + "g";
+      }
+
+      function formatPriceEuro(n) {
+        if (!Number.isFinite(n)) return "";
+        return "€ " + n.toFixed(2);
+      }
+
+      function imageUrlFromCell(raw) {
+        if (!raw) return "";
+        if (typeof raw === "string") {
+          const s = raw.trim();
+          if (/^https?:\/\//i.test(s) || s.startsWith("data:")) return s;
+          return "";
+        }
+        if (Array.isArray(raw)) {
+          for (let i = 0; i < raw.length; i++) {
+            const u = imageUrlFromCell(raw[i]);
+            if (u) return u;
+          }
+          return "";
+        }
+        if (typeof raw === "object") {
+          if (typeof raw.url === "string") return raw.url;
+          if (typeof raw.src === "string") return raw.src;
+        }
+        return "";
+      }
+
+      function colorForKey(key) {
+        const s = String(key || "");
+        let hash = 0;
+        for (let i = 0; i < s.length; i += 1) hash = ((hash << 5) - hash) + s.charCodeAt(i);
+        return DEFAULT_COLORS[Math.abs(hash) % DEFAULT_COLORS.length];
+      }
+
+      function resolveColor(value) {
+        const label = formatCell(value);
+        if (!label) return "";
+        const saved = state.config.valueColors[label];
+        if (typeof saved === "string" && /^#[0-9a-fA-F]{6}$/.test(saved)) return saved;
+        const fromChoice = choiceColorFromMeta(label);
+        if (fromChoice) return fromChoice;
+        return colorForKey(label);
+      }
+
+      function choiceColorFromMeta(label) {
+        const colId = state.config.colorColumn;
+        const meta = state.columnsMeta.find(function (m) { return String(m.id) === String(colId); });
+        if (!meta || !meta.choiceColors) return "";
+        const hex = meta.choiceColors[label];
+        return typeof hex === "string" ? hex : "";
+      }
+
+      function sanitizeStringArray(input) {
+        if (!Array.isArray(input)) return [];
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < input.length; i++) {
+          const s = typeof input[i] === "string" ? input[i].trim() : "";
+          if (s && !seen.has(s)) {
+            seen.add(s);
+            out.push(s);
+          }
+        }
+        return out;
+      }
+
+      function sanitizeValueColors(input) {
+        if (!isPlainObject(input)) return {};
+        const out = {};
+        Object.keys(input).forEach(function (key) {
+          const hex = typeof input[key] === "string" ? input[key].trim() : "";
+          if (key && /^#[0-9a-fA-F]{6}$/.test(hex)) out[key] = hex;
+        });
+        return out;
+      }
+
+      function clamp(n, min, max, fallback) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return fallback;
+        return Math.min(max, Math.max(min, v));
+      }
+
+      function buildSerializableConfig() {
+        return {
+          titleColumn: String(state.config.titleColumn || ""),
+          subtitleColumn: String(state.config.subtitleColumn || ""),
+          imageColumn: String(state.config.imageColumn || ""),
+          sizeColumn: String(state.config.sizeColumn || ""),
+          priceColumn: String(state.config.priceColumn || ""),
+          colorColumn: String(state.config.colorColumn || ""),
+          groupColumn: String(state.config.groupColumn || ""),
+          extraFields: sanitizeStringArray(state.config.extraFields),
+          valueColors: sanitizeValueColors(state.config.valueColors),
+          cardWidth: clamp(state.config.cardWidth, 72, 280, 120),
+          minZoom: clamp(state.config.minZoom, 0.3, 1, 0.5),
+          maxZoom: clamp(state.config.maxZoom, 0.8, 2, 1.2)
+        };
+      }
+
+      function applyLoadedOptions(options) {
+        const incoming = (options && typeof options === "object") ? options : {};
+        const next = {
+          titleColumn: typeof incoming.titleColumn === "string" ? incoming.titleColumn : "",
+          subtitleColumn: typeof incoming.subtitleColumn === "string" ? incoming.subtitleColumn : "",
+          imageColumn: typeof incoming.imageColumn === "string" ? incoming.imageColumn : "",
+          sizeColumn: typeof incoming.sizeColumn === "string" ? incoming.sizeColumn : "",
+          priceColumn: typeof incoming.priceColumn === "string" ? incoming.priceColumn : "",
+          colorColumn: typeof incoming.colorColumn === "string" ? incoming.colorColumn : "",
+          groupColumn: typeof incoming.groupColumn === "string" ? incoming.groupColumn : "",
+          extraFields: sanitizeStringArray(incoming.extraFields),
+          valueColors: sanitizeValueColors(incoming.valueColors),
+          cardWidth: clamp(incoming.cardWidth, 72, 280, 120),
+          minZoom: clamp(incoming.minZoom, 0.3, 1, 0.5),
+          maxZoom: clamp(incoming.maxZoom, 0.8, 2, 1.2)
+        };
+        const nextJson = JSON.stringify(next);
+        if (nextJson === state.lastAppliedOptionsJson) return;
+        state.isApplyingRemoteOptions = true;
+        state.config = next;
+        state.lastAppliedOptionsJson = nextJson;
+        syncSettingsInputs();
+        state.isApplyingRemoteOptions = false;
+      }
+
+      function loadLocalOptions() {
+        try {
+          const raw = window.localStorage.getItem(LOCAL_OPTIONS_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function saveLocalOptions(payload) {
+        try {
+          window.localStorage.setItem(LOCAL_OPTIONS_KEY, JSON.stringify(payload));
+        } catch (err) { /* ignore */ }
+      }
+
+      let saveTimer = null;
+      function persistOptions() {
+        if (state.isApplyingRemoteOptions) return;
+        const payload = buildSerializableConfig();
+        const payloadJson = JSON.stringify(payload);
+        if (payloadJson === state.lastSavedOptionsJson) return;
+        if (state.isBuilderHost) {
+          saveLocalOptions(payload);
+          state.lastSavedOptionsJson = payloadJson;
+          return;
+        }
+        if (!state.hasGrist || !window.grist || typeof grist.setOptions !== "function") return;
+        if (!state.optionsApiAvailable) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () {
+          if (state.isSavingOptions) return;
+          state.isSavingOptions = true;
+          Promise.resolve(grist.setOptions(payload))
+            .then(function () { state.lastSavedOptionsJson = payloadJson; })
+            .catch(function (err) {
+              const msg = String(err && err.message ? err.message : err || "");
+              if (msg.toLowerCase().includes("unknown interface")) state.optionsApiAvailable = false;
+              debugLog("setOptions failed", msg);
+            })
+            .finally(function () { state.isSavingOptions = false; });
+        }, 300);
+      }
+
+      function parseWidgetOptions(col) {
+        let opts = col && col.widgetOptions;
+        if (!opts && col && col.fields) opts = col.fields.widgetOptions;
+        if (typeof opts === "string") {
+          try { opts = JSON.parse(opts); } catch (e) { opts = null; }
+        }
+        return (opts && typeof opts === "object") ? opts : null;
+      }
+
+      function parseChoiceMeta(col) {
+        const opts = parseWidgetOptions(col);
+        const choiceColors = {};
+        const choiceValues = [];
+        const seen = new Set();
+        function addValue(name) {
+          const s = typeof name === "string" ? name.trim() : "";
+          if (s && !seen.has(s)) {
+            seen.add(s);
+            choiceValues.push(s);
+          }
+        }
+        if (opts) {
+          if (Array.isArray(opts.choices)) opts.choices.forEach(addValue);
+          if (opts.choiceOptions && typeof opts.choiceOptions === "object") {
+            Object.keys(opts.choiceOptions).forEach(function (name) {
+              addValue(name);
+              const fill = opts.choiceOptions[name] && opts.choiceOptions[name].fillColor;
+              if (typeof fill === "string" && fill) choiceColors[name] = fill;
+            });
+          }
+        }
+        return { choiceColors: choiceColors, choiceValues: choiceValues };
+      }
+
+      function normalizeMetaFromColumns(columns) {
+        if (!Array.isArray(columns)) return [];
+        return columns.map(function (col) {
+          const id = col.id || col.colId || col.name || col.label;
+          const label = col.label || col.name || col.colId || String(id);
+          const choice = parseChoiceMeta(col);
+          return {
+            id: String(id),
+            label: String(label),
+            type: col.type || "",
+            choiceColors: choice.choiceColors,
+            choiceValues: choice.choiceValues
+          };
+        }).filter(function (x) { return x.id && x.id !== "id"; });
+      }
+
+      function buildMetaFromRecords(records) {
+        const keys = new Set();
+        (records || []).forEach(function (rec) {
+          Object.keys(getRecordFieldObject(rec)).forEach(function (k) {
+            if (k !== "id" && k !== "fields" && !k.startsWith("_")) keys.add(k);
+          });
+        });
+        return Array.from(keys).map(function (id) {
+          return { id: id, label: id, type: "", choiceColors: {}, choiceValues: [] };
+        });
+      }
+
+      function guessDefaults() {
+        const cols = state.columnsMeta;
+        if (!cols.length) return;
+        const cfg = state.config;
+        function firstOf(pred) {
+          const hit = cols.find(pred);
+          return hit ? hit.id : "";
+        }
+        if (!cfg.titleColumn) {
+          cfg.titleColumn = firstOf(function (c) { return /gusto|nome|name|title|label/i.test(c.id + c.label); }) || cols[0].id;
+        }
+        if (!cfg.subtitleColumn) {
+          cfg.subtitleColumn = firstOf(function (c) { return /ricetta|codice|code|sku|id_/i.test(c.id + c.label); });
+        }
+        if (!cfg.sizeColumn) {
+          cfg.sizeColumn = firstOf(function (c) { return /peso|weight|qty|quant/i.test(c.id + c.label) || /numeric|int|float|number/i.test(c.type); });
+        }
+        if (!cfg.priceColumn) {
+          cfg.priceColumn = firstOf(function (c) { return /prezzo|price|importo/i.test(c.id + c.label); });
+        }
+        if (!cfg.colorColumn) {
+          cfg.colorColumn = firstOf(function (c) { return /stato|status|state|choice/i.test(c.id + c.label + c.type); });
+        }
+        if (!cfg.imageColumn) {
+          cfg.imageColumn = firstOf(function (c) { return /image|img|foto|url/i.test(c.id + c.label) || /attach/i.test(c.type); });
+        }
+      }
+
+      function columnOptionsHtml(selectedId, includeEmpty) {
+        const cols = state.columnsMeta.slice().sort(function (a, b) {
+          return String(a.label).localeCompare(String(b.label));
+        });
+        let html = includeEmpty ? '<option value="">—</option>' : "";
+        cols.forEach(function (m) {
+          const sel = String(m.id) === String(selectedId) ? " selected" : "";
+          html += '<option value="' + escapeHtml(m.id) + '"' + sel + ">" + escapeHtml(m.label) + "</option>";
+        });
+        return html;
+      }
+
+      function syncSettingsInputs() {
+        els.titleColumn.innerHTML = columnOptionsHtml(state.config.titleColumn, true);
+        els.subtitleColumn.innerHTML = columnOptionsHtml(state.config.subtitleColumn, true);
+        els.imageColumn.innerHTML = columnOptionsHtml(state.config.imageColumn, true);
+        els.sizeColumn.innerHTML = columnOptionsHtml(state.config.sizeColumn, true);
+        els.priceColumn.innerHTML = columnOptionsHtml(state.config.priceColumn, true);
+        els.colorColumn.innerHTML = columnOptionsHtml(state.config.colorColumn, true);
+        els.groupColumn.innerHTML = columnOptionsHtml(state.config.groupColumn, true);
+        els.cardWidth.value = String(state.config.cardWidth);
+        els.minZoom.value = String(state.config.minZoom);
+        els.maxZoom.value = String(state.config.maxZoom);
+        renderExtraFields();
+        renderValueColors();
+      }
+
+      function renderExtraFields() {
+        const needle = state.fieldSearch.trim().toLowerCase();
+        const selected = new Set(state.config.extraFields);
+        const cols = state.columnsMeta.filter(function (c) {
+          if (!needle) return true;
+          return String(c.label).toLowerCase().includes(needle) || String(c.id).toLowerCase().includes(needle);
+        });
+        els.extraFields.innerHTML = "";
+        if (!cols.length) {
+          els.extraFields.innerHTML = "<div class='hint'>No columns.</div>";
+          return;
+        }
+        cols.forEach(function (col) {
+          const row = document.createElement("div");
+          row.className = "col-item";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = selected.has(col.id);
+          input.addEventListener("change", function () {
+            const next = sanitizeStringArray(state.config.extraFields);
+            const i = next.indexOf(col.id);
+            if (input.checked && i < 0) next.push(col.id);
+            if (!input.checked && i >= 0) next.splice(i, 1);
+            state.config.extraFields = next;
+            persistOptions();
+            renderBoard();
+          });
+          const label = document.createElement("label");
+          label.textContent = col.label;
+          row.appendChild(input);
+          row.appendChild(label);
+          els.extraFields.appendChild(row);
+        });
+      }
+
+      function uniqueColorValues() {
+        const col = state.config.colorColumn;
+        const values = [];
+        const seen = new Set();
+        function add(label) {
+          const s = typeof label === "string" ? label.trim() : "";
+          if (s && !seen.has(s)) {
+            seen.add(s);
+            values.push(s);
+          }
+        }
+        if (!col) return values;
+        const meta = state.columnsMeta.find(function (m) { return String(m.id) === String(col); });
+        if (meta) {
+          (meta.choiceValues || []).forEach(add);
+          Object.keys(meta.choiceColors || {}).forEach(add);
+        }
+        Object.keys(state.config.valueColors || {}).forEach(add);
+        state.records.forEach(function (rec) {
+          cellLabels(getRecordValue(rec, col)).forEach(add);
+        });
+        values.sort(function (a, b) { return a.localeCompare(b); });
+        return values;
+      }
+
+      function renderValueColors() {
+        const values = uniqueColorValues();
+        const sig = String(state.config.colorColumn || "") + "|" + values.join("|");
+        if (sig === state.lastColorValuesSig && els.valueColors.children.length) return;
+        state.lastColorValuesSig = sig;
+        els.valueColors.innerHTML = "";
+        if (!values.length) {
+          els.valueColors.innerHTML = "<div class='hint'>Pick a color column to map tints.</div>";
+          return;
+        }
+        values.forEach(function (label) {
+          const row = document.createElement("div");
+          row.className = "color-row";
+          const name = document.createElement("div");
+          name.textContent = label;
+          const input = document.createElement("input");
+          input.type = "color";
+          input.value = resolveColor(label);
+          input.addEventListener("input", function () {
+            state.config.valueColors[label] = input.value;
+            renderBoard();
+          });
+          input.addEventListener("change", function () {
+            state.config.valueColors[label] = input.value;
+            persistOptions();
+          });
+          row.appendChild(name);
+          row.appendChild(input);
+          els.valueColors.appendChild(row);
+        });
+      }
+
+      function getCommandApi() {
+        if (!window.grist) return null;
+        if (grist.commandApi && typeof grist.commandApi.run === "function") return grist.commandApi;
+        return null;
+      }
+
+      function selectRecord(rowId) {
+        state.selectedRowId = rowId;
+        document.querySelectorAll(".record-card.is-selected").forEach(function (el) {
+          el.classList.remove("is-selected");
+        });
+        const card = els.boardRoot.querySelector('.record-card[data-row-id="' + rowId + '"]');
+        if (card) card.classList.add("is-selected");
+        openRecordCard(rowId);
+      }
+
+      async function openRecordCard(rowId) {
+        if (!state.hasGrist || !window.grist || rowId == null) return;
+        const id = typeof rowId === "number" ? rowId : Number(rowId);
+        if (!Number.isFinite(id)) return;
+        try {
+          if (typeof grist.setCursorPos === "function") {
+            await Promise.resolve(grist.setCursorPos({ rowId: id }));
+          }
+          const cmd = getCommandApi();
+          if (!cmd) {
+            debugLog("commandApi unavailable, cannot open card view");
+            return;
+          }
+          await Promise.resolve(cmd.run("viewAsCard"));
+        } catch (err) {
+          debugLog("openRecordCard failed", err && err.message ? err.message : String(err));
+        }
+      }
+
+      function cardZoom(size, maxSize) {
+        const minZ = clamp(state.config.minZoom, 0.3, 1, 0.5);
+        const maxZ = Math.max(minZ, clamp(state.config.maxZoom, 0.8, 2, 1.2));
+        if (!maxSize || maxSize <= 0) return 1;
+        const ratio = (size || 0) / maxSize;
+        return minZ + ratio * (maxZ - minZ);
+      }
+
+      function buildCard(record, maxSize) {
+        const rowId = getRecordRowId(record);
+        const title = formatCell(getRecordValue(record, state.config.titleColumn)) || ("#" + rowId);
+        const subtitle = formatCell(getRecordValue(record, state.config.subtitleColumn));
+        const img = imageUrlFromCell(getRecordValue(record, state.config.imageColumn));
+        const size = normalizeNumber(getRecordValue(record, state.config.sizeColumn)) || 0;
+        const price = state.config.priceColumn
+          ? normalizeNumber(getRecordValue(record, state.config.priceColumn))
+          : null;
+        const colorRaw = getRecordValue(record, state.config.colorColumn);
+        const color = state.config.colorColumn ? resolveColor(colorRaw) : "";
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "board-card-wrapper";
+        wrapper.style.setProperty("--board-zoom", cardZoom(size, maxSize).toFixed(3));
+
+        const card = document.createElement("div");
+        card.className = "record-card" + (color ? " has-color" : "") + (String(rowId) === String(state.selectedRowId) ? " is-selected" : "");
+        card.dataset.rowId = String(rowId);
+        if (color) card.style.setProperty("--status-color", color);
+
+        let fieldsHtml = "";
+        if (state.config.sizeColumn) {
+          const sizeRaw = getRecordValue(record, state.config.sizeColumn);
+          const sizeNum = normalizeNumber(sizeRaw);
+          if (sizeNum !== null) {
+            fieldsHtml += '<div class="card-field-value">' + escapeHtml(formatSizeGrams(sizeNum)) + "</div>";
+          }
+        }
+        if (price !== null) {
+          fieldsHtml += '<div class="card-field-value secondary">' + escapeHtml(formatPriceEuro(price)) + "</div>";
+        }
+        const skipCols = new Set([state.config.sizeColumn, state.config.priceColumn].filter(Boolean));
+        (state.config.extraFields || []).forEach(function (colId) {
+          if (skipCols.has(colId)) return;
+          const text = formatCell(getRecordValue(record, colId));
+          if (!text) return;
+          fieldsHtml += '<div class="card-field-value secondary">' + escapeHtml(text) + "</div>";
+        });
+
+        card.innerHTML =
+          '<div class="card-title-block">' +
+            '<span class="card-title">' + escapeHtml(title) + "</span>" +
+            (subtitle ? '<span class="card-subtitle">' + escapeHtml(subtitle) + "</span>" : "") +
+          "</div>" +
+          '<div class="card-body-row">' +
+            (img ? '<img class="card-image" alt="" src="' + escapeHtml(img) + '" onerror="this.style.display=\'none\'">' : "") +
+            (fieldsHtml ? '<div class="card-fields">' + fieldsHtml + "</div>" : "") +
+          "</div>";
+
+        card.addEventListener("click", function () { selectRecord(rowId); });
+        wrapper.appendChild(card);
+        return wrapper;
+      }
+
+      function packBoardGrid(grid) {
+        if (!grid) return;
+        const wrappers = Array.from(grid.querySelectorAll(":scope > .board-card-wrapper"));
+        if (!wrappers.length) {
+          grid.style.height = "0px";
+          return;
+        }
+        const GAP = 6;
+        const containerWidth = grid.clientWidth;
+        if (containerWidth <= 0) return;
+        const heightMap = new Float32Array(containerWidth);
+        let maxY = 0;
+        wrappers.forEach(function (wrapper) {
+          const w = wrapper.offsetWidth;
+          const h = wrapper.offsetHeight;
+          if (w <= 0 || h <= 0) return;
+          let bestX = 0;
+          let bestY = Infinity;
+          const searchLimit = Math.max(0, containerWidth - w);
+          for (let x = 0; x <= searchLimit; x += 2) {
+            const xEnd = Math.min(x + w, containerWidth);
+            let rowMax = 0;
+            for (let cx = x; cx < xEnd; cx++) {
+              if (heightMap[cx] > rowMax) rowMax = heightMap[cx];
+            }
+            if (rowMax < bestY) {
+              bestY = rowMax;
+              bestX = x;
+              if (bestY === 0) break;
+            }
+          }
+          wrapper.style.left = bestX + "px";
+          wrapper.style.top = bestY + "px";
+          const fillEnd = Math.min(bestX + w + GAP, containerWidth);
+          const newH = bestY + h + GAP;
+          for (let cx = bestX; cx < fillEnd; cx++) heightMap[cx] = newH;
+          if (newH > maxY) maxY = newH;
+        });
+        grid.style.height = maxY + "px";
+      }
+
+      function packLayout() {
+        const grouped = els.boardRoot.classList.contains("is-grouped");
+        const grids = grouped
+          ? Array.from(els.boardRoot.querySelectorAll(".board-group-items"))
+          : [els.boardRoot];
+        grids.forEach(function (grid) {
+          const section = grid.closest(".board-group");
+          if (section && section.classList.contains("is-collapsed")) {
+            grid.style.height = "0px";
+            return;
+          }
+          packBoardGrid(grid);
+        });
+      }
+
+      function recordsMaxSize(list) {
+        let max = 0;
+        const col = state.config.sizeColumn;
+        list.forEach(function (rec) {
+          const n = normalizeNumber(getRecordValue(rec, col));
+          if (n != null && n > max) max = n;
+        });
+        return Math.max(max, 1);
+      }
+
+      function appendCards(parent, list, maxSize) {
+        list.forEach(function (rec) {
+          parent.appendChild(buildCard(rec, maxSize));
+        });
+      }
+
+      function renderBoard() {
+        document.documentElement.style.setProperty("--card-w", clamp(state.config.cardWidth, 72, 280, 120) + "px");
+        const records = state.records || [];
+        els.boardRoot.innerHTML = "";
+        els.emptyState.hidden = records.length > 0;
+        if (!records.length) {
+          updateDebugSummary();
+          return;
+        }
+        const groupCol = state.config.groupColumn;
+        const maxSize = recordsMaxSize(records);
+        if (groupCol) {
+          els.boardRoot.classList.add("is-grouped");
+          const groups = new Map();
+          records.forEach(function (rec) {
+            const key = formatCell(getRecordValue(rec, groupCol)) || "(empty)";
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(rec);
+          });
+          groups.forEach(function (list, name) {
+            const section = document.createElement("section");
+            section.className = "board-group" + (state.collapsedGroups[name] ? " is-collapsed" : "");
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "board-group-title";
+            btn.innerHTML = '<span class="board-group-chevron">▾</span><span class="board-group-label"></span><span class="board-group-count"></span>';
+            btn.querySelector(".board-group-label").textContent = name;
+            btn.querySelector(".board-group-count").textContent = String(list.length);
+            btn.addEventListener("click", function () {
+              state.collapsedGroups[name] = !state.collapsedGroups[name];
+              section.classList.toggle("is-collapsed", !!state.collapsedGroups[name]);
+              requestAnimationFrame(packLayout);
+            });
+            const items = document.createElement("div");
+            items.className = "board-group-items";
+            appendCards(items, list, maxSize);
+            section.appendChild(btn);
+            section.appendChild(items);
+            els.boardRoot.appendChild(section);
+          });
+        } else {
+          els.boardRoot.classList.remove("is-grouped");
+          appendCards(els.boardRoot, records, maxSize);
+        }
+        requestAnimationFrame(packLayout);
+        renderValueColors();
+        updateDebugSummary();
+      }
+
+      function adoptRecords(records) {
+        state.records = Array.isArray(records) ? records : [];
+        if (!state.columnsMeta.length && state.records.length) {
+          state.columnsMeta = buildMetaFromRecords(state.records);
+          guessDefaults();
+          syncSettingsInputs();
+        }
+        renderBoard();
+      }
+
+      function updateDebugSummary() {
+        if (!els.debugSummary) return;
+        els.debugSummary.textContent = [
+          (state.isBuilderHost ? "Builder" : (state.hasGrist ? "Grist" : "Preview")) + " · records " + state.records.length,
+          "Selected " + (state.selectedRowId != null ? String(state.selectedRowId) : "—") + " · cols " + state.columnsMeta.length,
+          "Size col " + (state.config.sizeColumn || "—") + " · color " + (state.config.colorColumn || "—"),
+          "Version v" + WIDGET_VERSION
+        ].join("\n");
+      }
+
+      function applyPanelWidthFromStorage() {
+        try {
+          const n = Number.parseInt(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY), 10);
+          if (!Number.isFinite(n)) return;
+          const max = Math.max(240, Math.floor(window.innerWidth * 0.92));
+          els.app.style.setProperty("--panel-w", Math.max(240, Math.min(n, max)) + "px");
+        } catch (err) { /* ignore */ }
+      }
+
+      function wirePanelResize() {
+        if (state.panelResizeWired || !els.panelResizer) return;
+        state.panelResizeWired = true;
+        let startX = 0;
+        let startWidth = 0;
+        function onMove(e) {
+          if (!state._panelResizeActive) return;
+          const max = Math.max(240, Math.floor(window.innerWidth * 0.92));
+          const next = Math.max(240, Math.min(startWidth + (e.clientX - startX), max));
+          els.app.style.setProperty("--panel-w", next + "px");
+        }
+        function endResize() {
+          if (!state._panelResizeActive) return;
+          state._panelResizeActive = false;
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", endResize);
+          const panel = els.app.querySelector(".panel");
+          if (panel) {
+            try { window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(Math.round(panel.getBoundingClientRect().width))); } catch (err) { /* ignore */ }
+          }
+        }
+        els.panelResizer.addEventListener("pointerdown", function (e) {
+          if (e.button !== 0 || els.app.classList.contains("settings-hidden")) return;
+          e.preventDefault();
+          state._panelResizeActive = true;
+          startX = e.clientX;
+          const panel = els.app.querySelector(".panel");
+          startWidth = panel ? panel.getBoundingClientRect().width : 320;
+          document.addEventListener("pointermove", onMove);
+          document.addEventListener("pointerup", endResize);
+        });
+      }
+
+      function wireDebugWindowDrag() {
+        let dragging = false;
+        let offsetX = 0;
+        let offsetY = 0;
+        function onStart(evt) {
+          if (evt.target.closest(".debug-actions")) return;
+          const point = evt.touches ? evt.touches[0] : evt;
+          const rect = els.debugWindow.getBoundingClientRect();
+          dragging = true;
+          offsetX = point.clientX - rect.left;
+          offsetY = point.clientY - rect.top;
+          evt.preventDefault();
+        }
+        function onMove(evt) {
+          if (!dragging) return;
+          const point = evt.touches ? evt.touches[0] : evt;
+          els.debugWindow.style.left = Math.max(8, point.clientX - offsetX) + "px";
+          els.debugWindow.style.top = Math.max(8, point.clientY - offsetY) + "px";
+          els.debugWindow.style.right = "auto";
+        }
+        function onEnd() { dragging = false; }
+        els.debugHeader.addEventListener("mousedown", onStart);
+        els.debugHeader.addEventListener("touchstart", onStart, { passive: false });
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("touchmove", onMove, { passive: false });
+        window.addEventListener("mouseup", onEnd);
+        window.addEventListener("touchend", onEnd);
+      }
+
+      function onConfigSelectChange(key, el) {
+        el.addEventListener("change", function () {
+          state.config[key] = el.value;
+          persistOptions();
+          if (key === "colorColumn") renderValueColors();
+          renderBoard();
+        });
+      }
+
+      function wireInputs() {
+        onConfigSelectChange("titleColumn", els.titleColumn);
+        onConfigSelectChange("subtitleColumn", els.subtitleColumn);
+        onConfigSelectChange("imageColumn", els.imageColumn);
+        onConfigSelectChange("sizeColumn", els.sizeColumn);
+        onConfigSelectChange("priceColumn", els.priceColumn);
+        onConfigSelectChange("colorColumn", els.colorColumn);
+        onConfigSelectChange("groupColumn", els.groupColumn);
+        els.fieldSearch.addEventListener("input", function () {
+          state.fieldSearch = els.fieldSearch.value || "";
+          renderExtraFields();
+        });
+        els.cardWidth.addEventListener("change", function () {
+          state.config.cardWidth = clamp(els.cardWidth.value, 72, 280, 120);
+          els.cardWidth.value = String(state.config.cardWidth);
+          persistOptions();
+          renderBoard();
+        });
+        els.minZoom.addEventListener("change", function () {
+          state.config.minZoom = clamp(els.minZoom.value, 0.3, 1, 0.5);
+          els.minZoom.value = String(state.config.minZoom);
+          persistOptions();
+          renderBoard();
+        });
+        els.maxZoom.addEventListener("change", function () {
+          state.config.maxZoom = clamp(els.maxZoom.value, 0.8, 2, 1.2);
+          els.maxZoom.value = String(state.config.maxZoom);
+          persistOptions();
+          renderBoard();
+        });
+        els.settingsToggle.addEventListener("click", function () {
+          state.settingsVisible = !state.settingsVisible;
+          els.app.classList.toggle("settings-hidden", !state.settingsVisible);
+          const title = state.settingsVisible ? "Hide settings" : "Show settings";
+          els.settingsToggle.title = title;
+          els.settingsToggle.setAttribute("aria-label", title);
+          els.debugToggle.style.display = state.settingsVisible ? "flex" : "none";
+          requestAnimationFrame(packLayout);
+        });
+        els.debugToggle.addEventListener("click", function () {
+          const next = !els.debugWindow.classList.contains("visible");
+          els.debugWindow.classList.toggle("visible", next);
+          if (next) updateDebugSummary();
+        });
+        els.copyDebugLog.addEventListener("click", async function () {
+          const text = (els.debugSummary.textContent || "") + "\n---\n" + debugLines.join("\n");
+          try { await navigator.clipboard.writeText(text); } catch (err) { debugLog("copy failed"); }
+        });
+        els.clearDebugLog.addEventListener("click", function () {
+          debugLines.length = 0;
+          els.debugOutput.textContent = "";
+        });
+        els.closeDebugLog.addEventListener("click", function () {
+          els.debugWindow.classList.remove("visible");
+        });
+        window.addEventListener("resize", function () { packLayout(); });
+      }
+
+      async function enrichChoiceMetaFromGrist() {
+        if (!state.hasGrist || !window.grist || !grist.docApi || typeof grist.docApi.fetchTable !== "function") return;
+        if (!state.columnsMeta.length) return;
+        try {
+          const columns = await grist.docApi.fetchTable("_grist_Tables_column");
+          if (!columns || !Array.isArray(columns.colId)) return;
+          const byColId = {};
+          const nRows = columns.colId.length;
+          for (let i = 0; i < nRows; i++) {
+            const cid = columns.colId[i] != null ? String(columns.colId[i]) : "";
+            if (!cid) continue;
+            const parsed = parseChoiceMeta({
+              widgetOptions: columns.widgetOptions ? columns.widgetOptions[i] : null
+            });
+            if (!parsed.choiceValues.length && !Object.keys(parsed.choiceColors).length) continue;
+            byColId[cid] = parsed;
+          }
+          state.columnsMeta = state.columnsMeta.map(function (m) {
+            const extra = byColId[String(m.id)];
+            if (!extra) return m;
+            const seen = new Set(m.choiceValues || []);
+            const choiceValues = (m.choiceValues || []).slice();
+            extra.choiceValues.forEach(function (v) {
+              if (!seen.has(v)) {
+                seen.add(v);
+                choiceValues.push(v);
+              }
+            });
+            return Object.assign({}, m, {
+              choiceValues: choiceValues,
+              choiceColors: Object.assign({}, extra.choiceColors, m.choiceColors)
+            });
+          });
+        } catch (err) {
+          debugLog("enrichChoiceMeta failed", err && err.message ? err.message : String(err));
+        }
+      }
+
+      async function tryLoadColumnsMeta() {
+        if (!state.hasGrist || !window.grist || !grist.docApi || typeof grist.docApi.fetchSelectedTable !== "function") return;
+        try {
+          const table = await grist.docApi.fetchSelectedTable();
+          const cols = table && table.columns ? table.columns : [];
+          if (cols.length) {
+            state.columnsMeta = normalizeMetaFromColumns(cols);
+            await enrichChoiceMetaFromGrist();
+            guessDefaults();
+            syncSettingsInputs();
+            persistOptions();
+          }
+        } catch (err) {
+          debugLog("fetchSelectedTable failed", err && err.message ? err.message : String(err));
+        }
+      }
+
+      function wireGrist() {
+        if (!state.hasGrist || !window.grist) return;
+        if (state.gristWireDone) return;
+        try {
+          grist.ready({ requiredAccess: "full", allowSelectBy: true });
+        } catch (err) {
+          debugLog("grist.ready failed", err && err.message ? err.message : String(err));
+          return;
+        }
+        state.gristWireDone = true;
+        if (typeof grist.onOptions === "function" && !state.isBuilderHost) {
+          grist.onOptions(function (options) {
+            applyLoadedOptions(options || {});
+            renderBoard();
+          });
+        } else if (state.isBuilderHost) {
+          state.optionsApiAvailable = false;
+        }
+        if (typeof grist.onRecords === "function") {
+          grist.onRecords(function (records) {
+            adoptRecords(records);
+          });
+        }
+        if (typeof grist.onRecord === "function") {
+          grist.onRecord(function (record) {
+            const id = getRecordRowId(record);
+            if (id != null) {
+              state.selectedRowId = id;
+              document.querySelectorAll(".record-card.is-selected").forEach(function (el) {
+                el.classList.remove("is-selected");
+              });
+              const card = els.boardRoot.querySelector('.record-card[data-row-id="' + id + '"]');
+              if (card) card.classList.add("is-selected");
+            }
+          });
+        }
+      }
+
+      async function init() {
+        applyPanelWidthFromStorage();
+        if (state.isBuilderHost) {
+          state.optionsApiAvailable = false;
+          const localOptions = loadLocalOptions();
+          if (localOptions) applyLoadedOptions(localOptions);
+        }
+        if (!state.uiShellWired) {
+          wireInputs();
+          wirePanelResize();
+          wireDebugWindowDrag();
+          state.uiShellWired = true;
+        }
+        wireGrist();
+        await tryLoadColumnsMeta();
+        if (!state.hasGrist && !state.records.length) {
+          state.columnsMeta = buildMetaFromRecords(DEMO_RECORDS);
+          guessDefaults();
+          syncSettingsInputs();
+          adoptRecords(DEMO_RECORDS);
+        } else {
+          syncSettingsInputs();
+          renderBoard();
+        }
+        els.debugToggle.style.display = state.settingsVisible ? "flex" : "none";
+        debugLog("init", { hasGrist: state.hasGrist, records: state.records.length });
+      }
+
+      function waitForGristAndInit() {
+        const gristReady = window.grist && typeof window.grist.ready === "function";
+        if (gristReady) {
+          state.hasGrist = true;
+          init();
+          return;
+        }
+        state.hasGrist = false;
+        init();
+        let attempts = 0;
+        const timer = setInterval(function () {
+          attempts += 1;
+          if (window.grist && typeof window.grist.ready === "function") {
+            clearInterval(timer);
+            state.hasGrist = true;
+            init();
+            return;
+          }
+          if (attempts >= 40) clearInterval(timer);
+        }, 250);
+      }
+
+      waitForGristAndInit();
+    })();
+  </script>
+</body>
+</html>
