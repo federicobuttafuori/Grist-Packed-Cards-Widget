@@ -258,7 +258,7 @@
     .record-card {
       width: var(--card-w);
       box-sizing: border-box;
-      zoom: var(--board-zoom);
+      zoom: calc(var(--board-zoom) * var(--default-size, 1));
       background: #ffffff;
       border: 1px solid #dee2e6;
       border-radius: 4px;
@@ -402,15 +402,16 @@
         <div id="valueColors" class="color-list"></div>
         <h2>Card size</h2>
         <div class="field">
-          <label for="cardWidth">Base width (px)</label>
-          <input id="cardWidth" type="number" min="72" max="280" step="4" />
+          <label for="defaultSize">Default size</label>
+          <input id="defaultSize" type="number" min="0.3" max="3" step="0.05" />
+          <div class="hint">Scala tutto il contenuto della card. 1 = normale, 0.5 = metà, 2 = doppio.</div>
         </div>
         <div class="field">
-          <label for="minZoom">Min zoom</label>
+          <label for="minZoom">Min zoom (relativo a Size)</label>
           <input id="minZoom" type="number" min="0.3" max="1" step="0.05" />
         </div>
         <div class="field">
-          <label for="maxZoom">Max zoom</label>
+          <label for="maxZoom">Max zoom (relativo a Size)</label>
           <input id="maxZoom" type="number" min="0.8" max="2" step="0.05" />
         </div>
       </div>
@@ -441,7 +442,7 @@
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script>
     (function () {
-      const WIDGET_VERSION = "2026.08.27";
+      const WIDGET_VERSION = "2026.09.03";
       const LOCAL_OPTIONS_KEY = "grist-packed-cards-widget:options:v1";
       const PANEL_WIDTH_STORAGE_KEY = "grist-packed-cards-widget:panelWidthPx:v1";
       const DEFAULT_COLORS = [
@@ -473,7 +474,7 @@
           groupColumn: "",
           extraFields: [],
           valueColors: {},
-          cardWidth: 120,
+          defaultSize: 1.0,
           minZoom: 0.5,
           maxZoom: 1.2
         },
@@ -508,7 +509,7 @@
         extraFields: document.getElementById("extraFields"),
         fieldSearch: document.getElementById("fieldSearch"),
         valueColors: document.getElementById("valueColors"),
-        cardWidth: document.getElementById("cardWidth"),
+        defaultSize: document.getElementById("defaultSize"),
         minZoom: document.getElementById("minZoom"),
         maxZoom: document.getElementById("maxZoom"),
         settingsToggle: document.getElementById("settingsToggle"),
@@ -716,7 +717,7 @@
           groupColumn: String(state.config.groupColumn || ""),
           extraFields: sanitizeStringArray(state.config.extraFields),
           valueColors: sanitizeValueColors(state.config.valueColors),
-          cardWidth: clamp(state.config.cardWidth, 72, 280, 120),
+          defaultSize: clamp(state.config.defaultSize, 0.3, 3, 1.0),
           minZoom: clamp(state.config.minZoom, 0.3, 1, 0.5),
           maxZoom: clamp(state.config.maxZoom, 0.8, 2, 1.2)
         };
@@ -734,7 +735,7 @@
           groupColumn: typeof incoming.groupColumn === "string" ? incoming.groupColumn : "",
           extraFields: sanitizeStringArray(incoming.extraFields),
           valueColors: sanitizeValueColors(incoming.valueColors),
-          cardWidth: clamp(incoming.cardWidth, 72, 280, 120),
+          defaultSize: clamp(incoming.defaultSize, 0.3, 3, 1.0),
           minZoom: clamp(incoming.minZoom, 0.3, 1, 0.5),
           maxZoom: clamp(incoming.maxZoom, 0.8, 2, 1.2)
         };
@@ -900,7 +901,7 @@
         els.priceColumn.innerHTML = columnOptionsHtml(state.config.priceColumn, true);
         els.colorColumn.innerHTML = columnOptionsHtml(state.config.colorColumn, true);
         els.groupColumn.innerHTML = columnOptionsHtml(state.config.groupColumn, true);
-        els.cardWidth.value = String(state.config.cardWidth);
+        els.defaultSize.value = String(state.config.defaultSize);
         els.minZoom.value = String(state.config.minZoom);
         els.maxZoom.value = String(state.config.maxZoom);
         renderExtraFields();
@@ -1170,7 +1171,7 @@
       }
 
       function renderBoard() {
-        document.documentElement.style.setProperty("--card-w", clamp(state.config.cardWidth, 72, 280, 120) + "px");
+        document.documentElement.style.setProperty("--default-size", clamp(state.config.defaultSize, 0.3, 3, 1.0).toFixed(3));
         const records = state.records || [];
         els.boardRoot.innerHTML = "";
         els.emptyState.hidden = records.length > 0;
@@ -1330,9 +1331,9 @@
           state.fieldSearch = els.fieldSearch.value || "";
           renderExtraFields();
         });
-        els.cardWidth.addEventListener("change", function () {
-          state.config.cardWidth = clamp(els.cardWidth.value, 72, 280, 120);
-          els.cardWidth.value = String(state.config.cardWidth);
+        els.defaultSize.addEventListener("change", function () {
+          state.config.defaultSize = clamp(els.defaultSize.value, 0.3, 3, 1.0);
+          els.defaultSize.value = String(state.config.defaultSize);
           persistOptions();
           renderBoard();
         });
